@@ -66,13 +66,13 @@ class MainWindow(QMainWindow):
         self._current_view = "dashboard"
         self._filter_type: str | None = None
         self._filter_value: str | None = None
-        self._graph_show_cats = True
-        self._graph_show_tags = False
+        self._graph_show_cats = False
+        self._graph_show_tags = True
         self._graph_layout = "spring"
         self._focus_mode = False
 
         self.setWindowTitle("Continuum")
-        self.setMinimumSize(1280, 800)
+        self.setMinimumSize(600, 380)
         self.resize(1480, 920)
         self.menuBar().setVisible(False)
 
@@ -115,7 +115,9 @@ class MainWindow(QMainWindow):
         self._splitter.addWidget(self._stack)
 
         self._editor = NoteEditorPanel()
-        self._editor.setMinimumWidth(460)
+        self._editor.setMinimumWidth(220)
+        self._stack.setMinimumWidth(120)
+        self._splitter.setChildrenCollapsible(True)
         self._splitter.addWidget(self._editor)
 
         self._splitter.setSizes([260, 480, 520])
@@ -133,6 +135,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+N"), self, self._on_new_note)
         QShortcut(QKeySequence("Ctrl+F"), self, self._focus_search)
         QShortcut(QKeySequence("Ctrl+P"), self, self._toggle_preview)
+        QShortcut(QKeySequence("Ctrl+\\"), self, self._toggle_split_view)
         QShortcut(QKeySequence("Ctrl+Shift+P"), self, self._toggle_pin)
         QShortcut(QKeySequence("Delete"), self, self._shortcut_delete)
         QShortcut(QKeySequence("Ctrl+1"), self, lambda: self._on_view_changed("dashboard"))
@@ -175,6 +178,8 @@ class MainWindow(QMainWindow):
         self._editor.attachment_added.connect(self._on_attachment_action)
         self._editor.add_category_requested.connect(self._on_add_category)
         self._graph.note_selected.connect(self._on_graph_note_selected)
+        self._graph.tag_selected.connect(self._on_graph_tag_selected)
+        self._graph.category_selected.connect(self._on_graph_category_selected)
         self._graph.filter_changed.connect(self._on_graph_filter_changed)
         self._graph.layout_changed.connect(self._on_graph_layout_changed)
         self._dashboard.note_clicked.connect(self._on_dashboard_note_clicked)
@@ -274,6 +279,19 @@ class MainWindow(QMainWindow):
         self._note_list.select_note(nid)
         self._on_note_selected(nid)
 
+    def _on_graph_tag_selected(self, tag: str) -> None:
+        self._stack.setCurrentIndex(1)
+        self._filter_type = "tag"
+        self._filter_value = tag
+        self._top_bar.set_active_view("notes")
+        self._nav.set_active_view("notes")
+        self._note_list.set_trash_mode(False)
+        self._note_list.set_notes(self.service.get_notes_by_filter("tag", tag))
+        self._status.showMessage(f"Showing notes tagged #{tag}", 3000)
+
+    def _on_graph_category_selected(self, category: str) -> None:
+        self._on_filter_selected("category", category)
+
     def _on_search_filters(self, filters: SearchFilters) -> None:
         if not any([
             filters.query.strip(),
@@ -285,8 +303,8 @@ class MainWindow(QMainWindow):
         ]):
             self._refresh_note_list()
             return
-        notes = self.service.search_filtered(filters)
-        self._note_list.set_notes(notes)
+        results = self.service.search_results(filters)
+        self._note_list.set_search_results(results)
 
     def _on_search(self, q: str) -> None:
         self._on_search_filters(SearchFilters(query=q))
@@ -305,14 +323,11 @@ class MainWindow(QMainWindow):
         self._refresh_nav()
         if self._current_view == "dashboard":
             self._refresh_dashboard()
+        if self._current_view == "graph":
+            self._load_graph()
         note = self.service.get_note(nid)
         if note:
-            self._editor.load_note(note)
-            self._editor.load_backlinks(self.service.get_backlinks(nid))
-            self._editor.load_attachments(self.service.get_attachments(nid))
-
-        if note:
-            self._editor.load_note(note)
+            self._editor.refresh_metadata(note)
             self._editor.load_backlinks(self.service.get_backlinks(nid))
             self._editor.load_attachments(self.service.get_attachments(nid))
 
@@ -348,7 +363,7 @@ class MainWindow(QMainWindow):
         self.service.update_overrides(nid, self._editor.get_overrides())
         note = self.service.get_note(nid)
         if note:
-            self._editor.load_note(note)
+            self._editor.refresh_metadata(note)
         self._refresh_nav()
 
     def _on_attachment_action(self, note_id: int, path_or_id: str) -> None:
@@ -390,16 +405,17 @@ class MainWindow(QMainWindow):
             self._editor.lock_category_by_name(name)
             note = self.service.get_note(self._editor.current_note_id)
             if note:
-                self._editor.load_note(note)
+                self._editor.refresh_metadata(note)
 
     def _focus_search(self) -> None:
         self._stack.setCurrentIndex(1)
         self._note_list._search.setFocus()
 
     def _toggle_preview(self) -> None:
-        checked = not self._editor._prev_action.isChecked()
-        self._editor._prev_action.setChecked(checked)
-        self._editor._menu_preview(checked)
+        self._editor.toggle_preview()
+
+    def _toggle_split_view(self) -> None:
+        self._editor.toggle_split_view()
 
     def _toggle_pin(self) -> None:
         if self._editor.current_note_id:

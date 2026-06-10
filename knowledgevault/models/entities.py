@@ -18,6 +18,7 @@ class NodeType(str, Enum):
 class OrganizationOverrides:
     locked_categories: list[str] = field(default_factory=list)
     removed_categories: list[str] = field(default_factory=list)
+    locked_tags: list[str] = field(default_factory=list)
     added_tags: list[str] = field(default_factory=list)
     removed_tags: list[str] = field(default_factory=list)
 
@@ -25,6 +26,7 @@ class OrganizationOverrides:
         return json.dumps({
             "locked_categories": self.locked_categories,
             "removed_categories": self.removed_categories,
+            "locked_tags": self.locked_tags,
             "added_tags": self.added_tags,
             "removed_tags": self.removed_tags,
         })
@@ -40,6 +42,7 @@ class OrganizationOverrides:
         return cls(
             locked_categories=list(data.get("locked_categories", [])),
             removed_categories=list(data.get("removed_categories", [])),
+            locked_tags=list(data.get("locked_tags", [])),
             added_tags=list(data.get("added_tags", [])),
             removed_tags=list(data.get("removed_tags", [])),
         )

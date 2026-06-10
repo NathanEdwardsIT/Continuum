@@ -42,8 +42,11 @@ class GraphCanvas(QWidget):
 
     _EDGE_COLORS = {
         "backlink": "graph_edge",
+        "wiki": "accent",
         "category": "graph_category",
         "tag": "warning",
+        "shared_tag": "accent",
+        "tag_link": "warning",
     }
 
     def __init__(self, parent=None) -> None:
@@ -193,7 +196,7 @@ class GraphCanvas(QWidget):
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
 
-        if edge.edge_type == "backlink" and highlighted:
+        if edge.edge_type in ("backlink", "shared_tag", "wiki") and highlighted:
             path = QPainterPath(p1)
             mid = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
             dx, dy = p2.x() - p1.x(), p2.y() - p1.y()
@@ -358,11 +361,14 @@ class GraphViewWidget(QWidget):
     """Full graph page with toolbar, canvas, and detail panel."""
 
     note_selected = Signal(int)
+    tag_selected = Signal(str)
+    category_selected = Signal(str)
     filter_changed = Signal(str, bool, bool)
     layout_changed = Signal(str)
 
     MODES = {
         "Notes Only": (True, False, False),
+        "Notes + Tags": (True, False, True),
         "Notes + Categories": (True, True, False),
         "Full Graph": (True, True, True),
     }
@@ -418,7 +424,7 @@ class GraphViewWidget(QWidget):
         self._view_lbl = view_lbl
         self._mode_combo = QComboBox()
         self._mode_combo.addItems(list(self.MODES.keys()))
-        self._mode_combo.setCurrentIndex(1)
+        self._mode_combo.setCurrentIndex(1)  # Notes + Tags
         self._mode_combo.currentTextChanged.connect(self._on_mode_changed)
         tb_layout.addWidget(self._mode_combo)
 
@@ -475,6 +481,16 @@ class GraphViewWidget(QWidget):
         self._open_btn.clicked.connect(lambda checked=False: self._open_selected_note())
         side_layout.addWidget(self._open_btn)
 
+        self._filter_btn = PrimaryButton("View Tagged Notes")
+        self._filter_btn.hide()
+        self._filter_btn.clicked.connect(lambda checked=False: self._filter_selected_tag())
+        side_layout.addWidget(self._filter_btn)
+
+        self._filter_cat_btn = PrimaryButton("View Category Notes")
+        self._filter_cat_btn.hide()
+        self._filter_cat_btn.clicked.connect(lambda checked=False: self._filter_selected_category())
+        side_layout.addWidget(self._filter_cat_btn)
+
         conn_lbl = Caption("Connections")
         side_layout.addWidget(conn_lbl)
         self._conn_lbl = conn_lbl
@@ -484,7 +500,9 @@ class GraphViewWidget(QWidget):
         side_layout.addWidget(self._connections)
 
         side_layout.addStretch()
-        self._legend = Caption("● Notes  ■ Categories  ● Tags  — backlink / category / tag edges")
+        self._legend = Caption(
+            "● Notes  ■ Categories  ● Tags  — shared-tag links connect notes with common tags"
+        )
         side_layout.addWidget(self._legend)
 
         splitter.addWidget(self._side_panel)
@@ -492,6 +510,8 @@ class GraphViewWidget(QWidget):
         layout.addWidget(splitter, stretch=1)
 
         self._selected_note_id: int | None = None
+        self._selected_tag: str | None = None
+        self._selected_category: str | None = None
 
     def apply_palette(self, p: ThemePalette) -> None:
         self._palette = p
@@ -504,6 +524,8 @@ class GraphViewWidget(QWidget):
         self._legend.apply_palette(p)
         self._conn_lbl.apply_palette(p)
         self._open_btn.apply_palette(p)
+        self._filter_btn.apply_palette(p)
+        self._filter_cat_btn.apply_palette(p)
         self._search.apply_palette(p)
         self._view_lbl.apply_palette(p)
         self._layout_lbl.apply_palette(p)
@@ -580,15 +602,25 @@ class GraphViewWidget(QWidget):
 
     def _on_node_click(self, node_id: str) -> None:
         self._update_detail(node_id)
+        self._selected_note_id = None
+        self._selected_tag = None
+        self._selected_category = None
+        self._open_btn.hide()
+        self._filter_btn.hide()
+        self._filter_cat_btn.hide()
+
         if node_id.startswith("note_"):
             try:
                 self._selected_note_id = int(node_id.split("_", 1)[1])
                 self._open_btn.show()
             except ValueError:
                 pass
-        else:
-            self._selected_note_id = None
-            self._open_btn.hide()
+        elif node_id.startswith("tag_"):
+            self._selected_tag = node_id.split("_", 1)[1]
+            self._filter_btn.show()
+        elif node_id.startswith("cat_"):
+            self._selected_category = node_id.split("_", 1)[1]
+            self._filter_cat_btn.show()
 
     def _on_node_double_click(self, node_id: str) -> None:
         if node_id.startswith("note_"):
@@ -617,9 +649,17 @@ class GraphViewWidget(QWidget):
         if node.node_type == NodeType.NOTE:
             self._detail_info.setText("Double-click or use Open Note to view in editor.")
         elif node.node_type == NodeType.CATEGORY:
-            self._detail_info.setText("Auto-detected category grouping related notes.")
+            self._detail_info.setText("Category grouping — use View Category Notes to browse.")
         else:
-            self._detail_info.setText("Auto-generated tag from note content.")
+            note_links = sum(
+                1 for edge in self._current_edges
+                if edge.edge_type == "tag"
+                and (edge.source == node_id or edge.target == node_id)
+            )
+            self._detail_info.setText(
+                f"On {note_links} note{'s' if note_links != 1 else ''} · "
+                "notes with this tag are linked in the graph"
+            )
 
         self._connections.clear()
         neighbors: dict[str, tuple[str, float]] = {}
@@ -635,7 +675,10 @@ class GraphViewWidget(QWidget):
             neighbor = next((n for n in self._current_nodes if n.id == neighbor_id), None)
             if not neighbor:
                 continue
-            prefix = {"backlink": "↔", "category": "▣", "tag": "#"}.get(edge_type, "·")
+            prefix = {
+                "backlink": "↔", "wiki": "⇒", "category": "▣",
+                "tag": "#", "shared_tag": "⊕", "tag_link": "≈",
+            }.get(edge_type, "·")
             item = QListWidgetItem(f"{prefix} {neighbor.label[:28]}")
             item.setData(Qt.ItemDataRole.UserRole, neighbor_id)
             item.setToolTip(f"{edge_type} · strength {weight:.2f}")
@@ -644,3 +687,11 @@ class GraphViewWidget(QWidget):
     def _open_selected_note(self) -> None:
         if self._selected_note_id is not None:
             self.note_selected.emit(self._selected_note_id)
+
+    def _filter_selected_tag(self) -> None:
+        if self._selected_tag:
+            self.tag_selected.emit(self._selected_tag)
+
+    def _filter_selected_category(self) -> None:
+        if self._selected_category:
+            self.category_selected.emit(self._selected_category)

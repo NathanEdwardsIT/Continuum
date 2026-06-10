@@ -14,8 +14,47 @@ class SearchEngine:
     def __init__(self, repository: NoteRepository) -> None:
         self._repo = repository
 
-    def search_with_filters(self, filters: SearchFilters, limit: int = 50) -> list:
-        return self._repo.search_notes(filters, limit=limit)
+    def search_with_filters(self, filters: SearchFilters, limit: int = 50) -> list[SearchResult]:
+        """Search with optional text query (FTS5) plus category/tag/date/pinned filters."""
+        q = filters.query.strip()
+        if not q:
+            notes = self._repo.search_notes(filters, limit=limit)
+            return [
+                SearchResult(
+                    note_id=n.id or 0,
+                    title=n.title,
+                    snippet=n.preview,
+                    rank=0.0,
+                    categories=n.categories,
+                    tags=n.tags,
+                )
+                for n in notes
+            ]
+
+        fts_query = self._build_fts_query(q)
+        candidates = self._fts_search(fts_query, limit * 3)
+        if not candidates:
+            candidates = self._like_search(q, limit * 3)
+
+        results: list[SearchResult] = []
+        for r in candidates:
+            note = self._repo.get_note(r.note_id)
+            if not note or note.is_deleted:
+                continue
+            if filters.category and filters.category not in note.categories:
+                continue
+            if filters.tag and filters.tag.lower() not in [t.lower() for t in note.tags]:
+                continue
+            if filters.pinned_only and not note.pinned:
+                continue
+            if filters.modified_after and note.modified_at < filters.modified_after:
+                continue
+            if filters.modified_before and note.modified_at > filters.modified_before:
+                continue
+            results.append(r)
+            if len(results) >= limit:
+                break
+        return results
 
     def search(self, query: str, limit: int = 50) -> list[SearchResult]:
         """Search notes using FTS5 with fallback to LIKE."""

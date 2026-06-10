@@ -63,6 +63,18 @@ CATEGORY_PROFILES: dict[str, list[str]] = {
     ],
 }
 
+# Extra words filtered from auto-tags (common in notes but not useful as tags)
+TAG_STOP_WORDS: frozenset[str] = frozenset({
+    "note", "notes", "today", "tomorrow", "yesterday", "week", "month", "year",
+    "thing", "things", "something", "really", "going", "want", "know", "think",
+    "thought", "write", "writing", "content", "title", "text", "section", "page",
+    "first", "second", "third", "new", "old", "use", "used", "using", "way",
+    "many", "much", "lot", "etc", "yes", "maybe", "please", "thanks", "hello",
+    "meeting", "project", "task", "todo", "list", "item", "items", "update",
+    "updated", "created", "edited", "summary", "overview", "general", "misc",
+    "untitled", "draft", "idea", "ideas", "info", "information", "details",
+})
+
 STOP_WORDS: frozenset[str] = frozenset({
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of",
     "with", "by", "from", "as", "is", "was", "are", "were", "been", "be", "have",

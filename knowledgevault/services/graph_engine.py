@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from enum import Enum
+from itertools import combinations
 
 import networkx as nx
 
@@ -70,15 +71,73 @@ class GraphEngine:
                 size=size,
             )
 
-        for tag in tags:
-            node_id = f"tag_{tag.name}"
-            size = 0.8 + math.log1p(tag.note_count) * 0.5
-            g.add_node(
-                node_id,
-                label=tag.name,
-                node_type=NodeType.TAG.value,
-                size=size,
-            )
+        if show_tags:
+            for tag in tags:
+                node_id = f"tag_{tag.name}"
+                size = 0.8 + math.log1p(tag.note_count) * 0.5
+                g.add_node(
+                    node_id,
+                    label=tag.name,
+                    node_type=NodeType.TAG.value,
+                    size=size,
+                )
+
+            note_tag_sets: dict[int, set[str]] = {}
+            tag_pair_counts: dict[tuple[str, str], int] = {}
+
+            for note in notes:
+                note_node = f"note_{note.id}"
+                tag_set = set(note.tags)
+                note_tag_sets[note.id or 0] = tag_set
+                for tag_name in tag_set:
+                    tag_node = f"tag_{tag_name}"
+                    if g.has_node(tag_node):
+                        g.add_edge(note_node, tag_node, weight=0.35, edge_type="tag")
+                sorted_tags = sorted(tag_set)
+                for a, b in combinations(sorted_tags, 2):
+                    pair = (a, b)
+                    tag_pair_counts[pair] = tag_pair_counts.get(pair, 0) + 1
+
+            # Note↔note edges for notes sharing tags
+            note_ids = [note.id for note in notes if note.id is not None]
+            for i, note_a_id in enumerate(note_ids):
+                tags_a = note_tag_sets.get(note_a_id, set())
+                if not tags_a:
+                    continue
+                for note_b_id in note_ids[i + 1:]:
+                    shared = tags_a & note_tag_sets.get(note_b_id, set())
+                    if not shared:
+                        continue
+                    src = f"note_{note_a_id}"
+                    tgt = f"note_{note_b_id}"
+                    if not (g.has_node(src) and g.has_node(tgt)):
+                        continue
+                    weight = min(0.2 + 0.15 * len(shared), 0.85)
+                    existing = g.get_edge_data(src, tgt)
+                    if existing and existing.get("edge_type") == "backlink":
+                        existing["weight"] = max(existing["weight"], weight)
+                        existing["shared_tags"] = len(shared)
+                    else:
+                        g.add_edge(
+                            src, tgt,
+                            weight=weight,
+                            edge_type="shared_tag",
+                            shared_tags=len(shared),
+                        )
+
+            # Tag↔tag co-occurrence edges (tags appearing together on 2+ notes)
+            for (tag_a, tag_b), count in tag_pair_counts.items():
+                if count < 2:
+                    continue
+                node_a = f"tag_{tag_a}"
+                node_b = f"tag_{tag_b}"
+                if g.has_node(node_a) and g.has_node(node_b):
+                    g.add_edge(
+                        node_a, node_b,
+                        weight=min(0.15 + 0.1 * count, 0.7),
+                        edge_type="tag_link",
+                        cooccurrence=count,
+                    )
 
         if show_categories:
             for note in notes:
@@ -87,16 +146,6 @@ class GraphEngine:
                     cat_node = f"cat_{cat_name}"
                     if g.has_node(cat_node):
                         g.add_edge(note_node, cat_node, weight=0.5, edge_type="category")
-
-        if show_tags:
-            top_tags = {t.name for t in sorted(tags, key=lambda t: t.note_count, reverse=True)[:15]}
-            for note in notes:
-                note_node = f"note_{note.id}"
-                for tag_name in note.tags:
-                    if tag_name in top_tags:
-                        tag_node = f"tag_{tag_name}"
-                        if g.has_node(tag_node):
-                            g.add_edge(note_node, tag_node, weight=0.3, edge_type="tag")
 
         seen_pairs: set[tuple[str, str]] = set()
         for bl in backlinks:
@@ -107,7 +156,14 @@ class GraphEngine:
                 continue
             seen_pairs.add(pair)
             if g.has_node(src) and g.has_node(tgt):
-                g.add_edge(src, tgt, weight=bl.strength, edge_type="backlink")
+                edge_type = "wiki" if "wiki" in (bl.reason or "").lower() else "backlink"
+                existing = g.get_edge_data(src, tgt)
+                if existing:
+                    existing["weight"] = max(existing.get("weight", 0), bl.strength)
+                    if edge_type == "wiki":
+                        existing["edge_type"] = "wiki"
+                else:
+                    g.add_edge(src, tgt, weight=bl.strength, edge_type=edge_type)
 
         self._graph = g
         return g

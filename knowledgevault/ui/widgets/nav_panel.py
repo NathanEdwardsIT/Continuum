@@ -28,7 +28,9 @@ class NavPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("sidebar")
-        self.setFixedWidth(260)
+        self.setMinimumWidth(52)
+        self.setMaximumWidth(280)
+        self.resize(260, 600)
         self._nav_buttons: list[NavButton] = []
         self._setup_ui()
 

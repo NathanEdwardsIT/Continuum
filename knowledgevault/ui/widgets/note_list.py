@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, time
 
 from PySide6.QtCore import Qt, Signal, QTimer
@@ -99,7 +100,7 @@ class NoteListPanel(QWidget):
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(250)
-        self._search_timer.timeout.connect(self._emit_filters)
+        self._search_timer.timeout.connect(self.emit_filters_now)
 
     def apply_palette(self, p: ThemePalette) -> None:
         self._palette = p
@@ -134,7 +135,7 @@ class NoteListPanel(QWidget):
         return SearchFilters(
             query=self._search.text(),
             category=self._cat_filter.currentData() or None,
-            tag=self._tag_filter.text().strip() or None,
+            tag=self._tag_filter.text().strip().lower() or None,
             modified_after=modified_after,
             modified_before=modified_before,
             pinned_only=self._pinned_filter.isChecked(),
@@ -196,12 +197,18 @@ class NoteListPanel(QWidget):
             self._list.setItemWidget(item, card)
             item.setData(Qt.ItemDataRole.UserRole, note.id)
 
+    @staticmethod
+    def _plain_snippet(snippet: str) -> str:
+        return re.sub(r"</?b>", "", snippet)
+
     def set_search_results(self, results: list[SearchResult]) -> None:
         self._list.clear()
         self._title.setText(f"{len(results)} Results")
         for r in results:
             item = QListWidgetItem(self._list)
-            card = self._make_card(r.title, r.snippet, datetime.now(), r.categories)
+            card = self._make_card(
+                r.title, self._plain_snippet(r.snippet), datetime.now(), r.categories,
+            )
             item.setSizeHint(card.sizeHint())
             self._list.addItem(item)
             self._list.setItemWidget(item, card)

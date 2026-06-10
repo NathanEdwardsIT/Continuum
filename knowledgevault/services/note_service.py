@@ -7,7 +7,7 @@ from pathlib import Path
 
 from continuum.database.connection import DatabaseConnection
 from continuum.database.repository import NoteRepository
-from continuum.models.entities import Note, OrganizationOverrides, SearchFilters
+from continuum.models.entities import Note, OrganizationOverrides, SearchFilters, SearchResult
 from continuum.services.attachment_service import AttachmentService
 from continuum.services.backlink_engine import BacklinkEngine
 from continuum.services.categorization import CategorizationEngine
@@ -119,6 +119,9 @@ class NoteService:
     def search_filtered(self, filters: SearchFilters) -> list[Note]:
         return self.repository.search_notes(filters)
 
+    def search_results(self, filters: SearchFilters) -> list[SearchResult]:
+        return self.search.search_with_filters(filters)
+
     def get_notes_by_filter(self, filter_type: str, filter_value: str) -> list[Note]:
         if filter_type == "category":
             return self.repository.get_notes_by_category(filter_value)
@@ -140,7 +143,18 @@ class NoteService:
         overrides = note.organization_overrides
         profiles = self.categories.get_profile_map()
         auto_categories = self.categorization.categorize(title, content, profiles)
-        auto_tags = self.tags.generate_tags(title, content)
+        all_summaries = self.repository.get_all_note_summaries()
+        corpus_freq, num_docs = self.tags.build_corpus_frequencies(
+            all_summaries, exclude_note_id=note_id,
+        )
+        profile_keywords = {kw for kws in profiles.values() for kw in kws}
+        auto_tags = self.tags.generate_tags(
+            title,
+            content,
+            corpus_doc_freq=corpus_freq,
+            num_docs=num_docs,
+            exclude_keywords=profile_keywords,
+        )
 
         categories = [c for c in auto_categories if c not in overrides.removed_categories]
         for locked in overrides.locked_categories:
@@ -148,10 +162,20 @@ class NoteService:
                 categories.append(locked)
         categories = list(dict.fromkeys(categories))
 
-        tags = [t for t in auto_tags if t not in overrides.removed_tags]
+        tags: list[str] = []
+        for locked in overrides.locked_tags:
+            if locked not in overrides.removed_tags and locked not in tags:
+                tags.append(locked)
         for added in overrides.added_tags:
-            if added not in tags:
+            if added not in overrides.removed_tags and added not in tags:
                 tags.append(added)
+        for candidate in auto_tags:
+            if (
+                candidate not in overrides.removed_tags
+                and candidate not in tags
+                and len(tags) < 8
+            ):
+                tags.append(candidate)
 
         folder_names = self.folders.determine_folders(categories, tags)
         self.repository.set_note_categories(note_id, categories)
