@@ -1,4 +1,4 @@
-"""Inspector panel — note editor with markdown, attachments, and overrides."""
+"""Inspector panel — note editor with formatting toolbar and improved layout."""
 
 from __future__ import annotations
 
@@ -8,25 +8,30 @@ import sys
 
 import markdown
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QStackedWidget,
     QTextBrowser,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from continuum.models.entities import Attachment, Note, OrganizationOverrides
-from continuum.ui.components.buttons import GhostButton, PrimaryButton
+from continuum.ui.components.buttons import GhostButton
 from continuum.ui.components.card import ElevatedCard
+from continuum.ui.components.markdown_toolbar import MarkdownToolBar, style_plain_editor
 from continuum.ui.components.typography import Body, Caption, H2
 from continuum.ui.theme_palette import ThemePalette, ThemeId, get_palette
 
@@ -41,6 +46,7 @@ class NoteEditorPanel(QWidget):
     overrides_changed = Signal(int)
     attachment_added = Signal(int, str)
     attachment_removed = Signal(int)
+    add_category_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -51,125 +57,179 @@ class NoteEditorPanel(QWidget):
         self._preview = False
         self._is_deleted = False
         self._overrides = OrganizationOverrides()
+        self._toolbar_btns: list[GhostButton] = []
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(20, 20, 20, 20)
-        outer.setSpacing(0)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(8)
 
-        self._card = ElevatedCard(padding=24)
+        self._card = ElevatedCard(padding=16)
+        card = self._card.content_layout
+        card.setSpacing(10)
         outer.addWidget(self._card, stretch=1)
 
-        cl = self._card.content_layout
-        toolbar = QHBoxLayout()
+        # ── Header: actions menu + meta + cursor position ──
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        self._actions_btn = QToolButton()
+        self._actions_btn.setText("Actions ▾")
+        self._actions_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._actions_menu = QMenu(self)
+        self._pin_action = self._actions_menu.addAction("Pin note")
+        self._pin_action.setCheckable(True)
+        self._pin_action.triggered.connect(self._menu_pin)
+        self._actions_menu.addAction("Attach file…", self._add_attachment)
+        self._prev_action = self._actions_menu.addAction("Toggle preview")
+        self._prev_action.setCheckable(True)
+        self._prev_action.triggered.connect(self._menu_preview)
+        self._focus_action = self._actions_menu.addAction("Focus mode")
+        self._focus_action.setCheckable(True)
+        self._focus_action.triggered.connect(lambda on: self.focus_mode_toggled.emit(on))
+        self._actions_menu.addSeparator()
+        self._delete_action = self._actions_menu.addAction("Move to trash", self._delete_note)
+        self._restore_action = self._actions_menu.addAction("Restore note", self._restore_note)
+        self._restore_action.setVisible(False)
+        self._actions_btn.setMenu(self._actions_menu)
+        header.addWidget(self._actions_btn)
+
         self._meta = Caption("")
-        toolbar.addWidget(self._meta)
-        toolbar.addStretch()
+        header.addWidget(self._meta)
+        header.addStretch()
+        self._cursor_pos = Caption("Ln 1, Col 1")
+        header.addWidget(self._cursor_pos)
+        card.addLayout(header)
 
-        self._pin_btn = GhostButton("Pin")
-        self._pin_btn.setCheckable(True)
-        self._pin_btn.clicked.connect(self._toggle_pin)
-        toolbar.addWidget(self._pin_btn)
+        # ── Markdown formatting toolbar ──
+        self._editor = QPlainTextEdit()
+        style_plain_editor(self._editor, self._palette)
+        self._editor.setPlaceholderText(
+            "Start writing…  Use the toolbar for bold, italic, headings, and lists.\n"
+            "Wiki links: [[Note Title]]"
+        )
+        self._editor.setMinimumHeight(280)
+        self._editor.textChanged.connect(self._on_edit)
+        self._editor.cursorPositionChanged.connect(self._update_cursor_pos)
+        self._editor.setCursorWidth(2)
 
-        self._attach_btn = GhostButton("Attach")
-        self._attach_btn.clicked.connect(lambda checked=False: self._add_attachment())
-        toolbar.addWidget(self._attach_btn)
+        self._fmt_toolbar = MarkdownToolBar(self._editor)
+        card.addWidget(self._fmt_toolbar)
 
-        self._prev_btn = GhostButton("Preview")
-        self._prev_btn.setCheckable(True)
-        self._prev_btn.clicked.connect(self._toggle_preview)
-        toolbar.addWidget(self._prev_btn)
-
-        self._focus_btn = GhostButton("Focus")
-        self._focus_btn.setCheckable(True)
-        self._focus_btn.clicked.connect(lambda c: self.focus_mode_toggled.emit(c))
-        toolbar.addWidget(self._focus_btn)
-
-        self._delete_btn = GhostButton("Delete")
-        self._delete_btn.clicked.connect(lambda checked=False: self._delete_note())
-        toolbar.addWidget(self._delete_btn)
-
-        self._restore_btn = GhostButton("Restore")
-        self._restore_btn.hide()
-        self._restore_btn.clicked.connect(lambda checked=False: self._restore_note())
-        toolbar.addWidget(self._restore_btn)
-
-        cl.addLayout(toolbar)
-
+        # ── Title ──
         self._title = QLineEdit()
         self._title.setObjectName("titleField")
-        self._title.setPlaceholderText("Untitled")
+        self._title.setPlaceholderText("Note title")
+        self._title.setMinimumHeight(44)
         self._title.textChanged.connect(lambda: self.content_changed.emit())
-        cl.addWidget(self._title)
+        card.addWidget(self._title)
 
+        # ── Editor / preview stack ──
         self._stack = QStackedWidget()
-        self._editor = QPlainTextEdit()
-        self._editor.setPlaceholderText("Start writing… Use [[Note Title]] for wiki links.")
-        self._editor.textChanged.connect(self._on_edit)
         self._stack.addWidget(self._editor)
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
         self._stack.addWidget(self._browser)
-        cl.addWidget(self._stack, stretch=1)
+        card.addWidget(self._stack, stretch=1)
 
+        # ── Status line ──
+        status = QHBoxLayout()
         self._words = Caption("")
-        cl.addWidget(self._words)
+        status.addWidget(self._words)
+        status.addStretch()
+        self._preview_hint = Caption("Ctrl+B bold · Ctrl+I italic · Ctrl+P preview")
+        status.addWidget(self._preview_hint)
+        card.addLayout(status)
 
-        override_row = QHBoxLayout()
+        # ── Organize section ──
+        org_frame = QFrame()
+        org_frame.setObjectName("orgSection")
+        org_layout = QVBoxLayout(org_frame)
+        org_layout.setContentsMargins(0, 4, 0, 0)
+        org_layout.setSpacing(6)
+        org_title = Caption("ORGANIZE")
+        org_layout.addWidget(org_title)
+        self._org_title = org_title
+
+        org_row = QHBoxLayout()
+        org_row.setSpacing(6)
+        self._new_cat_btn = GhostButton("+ Category")
+        self._new_cat_btn.clicked.connect(lambda checked=False: self.add_category_requested.emit())
+        org_row.addWidget(self._new_cat_btn)
+
         self._lock_cat = QComboBox()
-        self._lock_cat.setEditable(False)
-        self._lock_cat.addItem("Lock category…", "")
-        override_row.addWidget(self._lock_cat)
+        self._lock_cat.setMinimumHeight(32)
+        self._lock_cat.addItem("Assign category…", "")
+        org_row.addWidget(self._lock_cat, stretch=1)
+
         lock_btn = GhostButton("Lock")
         lock_btn.clicked.connect(lambda checked=False: self._lock_category())
-        override_row.addWidget(lock_btn)
+        org_row.addWidget(lock_btn)
+        self._toolbar_btns.extend([self._new_cat_btn, lock_btn])
+        org_layout.addLayout(org_row)
+
+        tag_row = QHBoxLayout()
+        tag_row.setSpacing(6)
         self._add_tag = QLineEdit()
-        self._add_tag.setPlaceholderText("Add tag override")
-        override_row.addWidget(self._add_tag)
+        self._add_tag.setPlaceholderText("Add custom tag")
+        self._add_tag.setMinimumHeight(32)
+        tag_row.addWidget(self._add_tag, stretch=1)
         add_tag_btn = GhostButton("+ Tag")
         add_tag_btn.clicked.connect(lambda checked=False: self._add_tag_override())
-        override_row.addWidget(add_tag_btn)
-        cl.addLayout(override_row)
+        tag_row.addWidget(add_tag_btn)
+        self._toolbar_btns.append(add_tag_btn)
+        org_layout.addLayout(tag_row)
+        card.addWidget(org_frame)
 
         meta = QHBoxLayout()
         self._cats = Caption("")
         self._tags = Caption("")
-        meta.addWidget(self._cats)
-        meta.addStretch()
-        meta.addWidget(self._tags)
-        cl.addLayout(meta)
+        self._cats.setWordWrap(True)
+        meta.addWidget(self._cats, stretch=1)
+        meta.addWidget(self._tags, stretch=1)
+        card.addLayout(meta)
 
+        # ── Attachments & backlinks in scroll areas ──
         self._att_label = H2("Attachments")
         self._att_label.hide()
-        cl.addWidget(self._att_label)
+        card.addWidget(self._att_label)
         self._att_scroll = QScrollArea()
         self._att_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._att_scroll.setMaximumHeight(72)
+        self._att_scroll.setWidgetResizable(True)
+        self._att_scroll.setMaximumHeight(64)
         self._att_scroll.hide()
         att_w = QWidget()
         self._att_row = QHBoxLayout(att_w)
         self._att_row.setContentsMargins(0, 0, 0, 0)
         self._att_scroll.setWidget(att_w)
-        cl.addWidget(self._att_scroll)
+        card.addWidget(self._att_scroll)
 
-        self._rel = H2("Related")
+        self._rel = H2("Related notes")
         self._rel.hide()
-        cl.addWidget(self._rel)
+        card.addWidget(self._rel)
         self._bl_scroll = QScrollArea()
         self._bl_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._bl_scroll.setWidgetResizable(True)
         self._bl_scroll.setMaximumHeight(56)
         self._bl_scroll.hide()
         bl_w = QWidget()
         self._bl_row = QHBoxLayout(bl_w)
         self._bl_row.setContentsMargins(0, 0, 0, 0)
         self._bl_scroll.setWidget(bl_w)
-        cl.addWidget(self._bl_scroll)
+        card.addWidget(self._bl_scroll)
 
-        self._empty = Body("Select a note or create a new one")
+        self._empty = Body("Select a note or press Ctrl+N to start writing")
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(self._empty)
         self._show_empty(True)
+
+        # Hidden compat refs for main_window shortcuts
+        self._prev_btn = self._prev_action
+        self._pin_btn = self._pin_action
+        self._focus_btn = self._focus_action
+        self._delete_btn = self._delete_action
+        self._attach_btn = self._actions_menu.actions()[1]
+        self._restore_btn = self._restore_action
 
     def apply_palette(self, p: ThemePalette) -> None:
         self._palette = p
@@ -180,20 +240,78 @@ class NoteEditorPanel(QWidget):
         self._tags.apply_palette(p)
         self._rel.apply_palette(p)
         self._att_label.apply_palette(p)
+        self._org_title.apply_palette(p)
+        self._preview_hint.apply_palette(p)
+        self._cursor_pos.apply_palette(p)
         self._empty.apply_palette(p)
-        self._prev_btn.apply_palette(p)
-        self._focus_btn.apply_palette(p)
-        self._pin_btn.apply_palette(p)
-        self._attach_btn.apply_palette(p)
-        self._delete_btn.apply_palette(p)
-        self._restore_btn.apply_palette(p)
+        self._fmt_toolbar.apply_palette(p)
+        style_plain_editor(self._editor, p)
+        for btn in self._toolbar_btns:
+            btn.apply_palette(p)
+
+        pal = self._editor.palette()
+        pal.setColor(QPalette.ColorRole.Text, QColor(p.text_primary))
+        pal.setColor(QPalette.ColorRole.Base, QColor(p.bg_tertiary))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(p.selection))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(p.text_primary))
+        self._editor.setPalette(pal)
+
         self._title.setStyleSheet(f"""
           QLineEdit#titleField {{
-            background: transparent; border: none;
-            font-size: 24px; font-weight: 700;
-            color: {p.text_primary}; padding: 8px 0;
+            background: {p.bg_tertiary};
+            border: 1px solid {p.border_subtle};
+            border-radius: 8px;
+            font-size: 22px;
+            font-weight: 700;
+            color: {p.text_primary};
+            padding: 8px 12px;
+          }}
+          QLineEdit#titleField:focus {{
+            border: 2px solid {p.accent};
+            padding: 7px 11px;
           }}
         """)
+        self._actions_btn.setStyleSheet(f"""
+            QToolButton {{
+                background: {p.bg_tertiary};
+                color: {p.text_primary};
+                border: 1px solid {p.border_subtle};
+                border-radius: 8px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }}
+            QToolButton::menu-indicator {{ image: none; }}
+            QToolButton:hover {{ border-color: {p.accent}; }}
+        """)
+        self._lock_cat.setStyleSheet(f"""
+            QComboBox {{
+                background: {p.bg_tertiary};
+                color: {p.text_primary};
+                border: 1px solid {p.border_subtle};
+                border-radius: 8px;
+                padding: 4px 10px;
+            }}
+            QComboBox:focus {{ border-color: {p.accent}; }}
+        """)
+        self._add_tag.setStyleSheet(f"""
+            QLineEdit {{
+                background: {p.bg_tertiary};
+                color: {p.text_primary};
+                border: 1px solid {p.border_subtle};
+                border-radius: 8px;
+                padding: 4px 10px;
+            }}
+            QLineEdit:focus {{ border: 2px solid {p.accent}; }}
+        """)
+        org_frame = self.findChild(QFrame, "orgSection")
+        if org_frame:
+            org_frame.setStyleSheet(f"""
+                QFrame#orgSection {{
+                    border-top: 1px solid {p.border_subtle};
+                    margin-top: 4px;
+                    padding-top: 4px;
+                }}
+            """)
         self._style_chips()
 
     set_palette = apply_palette
@@ -220,6 +338,12 @@ class NoteEditorPanel(QWidget):
                       }}
                     """)
 
+    def _update_cursor_pos(self) -> None:
+        cursor = self._editor.textCursor()
+        line = cursor.blockNumber() + 1
+        col = cursor.positionInBlock() + 1
+        self._cursor_pos.setText(f"Ln {line}, Col {col}")
+
     def _show_empty(self, show: bool) -> None:
         self._card.setVisible(not show)
         self._empty.setVisible(show)
@@ -228,7 +352,7 @@ class NoteEditorPanel(QWidget):
         current = self._lock_cat.currentData()
         self._lock_cat.blockSignals(True)
         self._lock_cat.clear()
-        self._lock_cat.addItem("Lock category…", "")
+        self._lock_cat.addItem("Assign category…", "")
         for cat in categories:
             self._lock_cat.addItem(cat, cat)
         idx = self._lock_cat.findData(current)
@@ -252,16 +376,17 @@ class NoteEditorPanel(QWidget):
         self._meta.setText(
             f"Created {note.created_at.strftime('%b %d')} · edited {note.modified_at.strftime('%b %d')}"
         )
-        self._cats.setText(" · ".join(note.categories) or "No categories")
-        self._tags.setText(" ".join(f"#{t}" for t in note.tags[:8]) or "No tags")
-        self._pin_btn.setChecked(note.pinned)
-        self._pin_btn.setText("Unpin" if note.pinned else "Pin")
-        self._delete_btn.setVisible(not note.is_deleted)
-        self._restore_btn.setVisible(note.is_deleted)
+        self._cats.setText("Categories: " + (" · ".join(note.categories) if note.categories else "—"))
+        self._tags.setText("Tags: " + (" ".join(f"#{t}" for t in note.tags[:8]) if note.tags else "—"))
+        self._pin_action.setChecked(note.pinned)
+        self._pin_action.setText("Unpin note" if note.pinned else "Pin note")
+        self._delete_action.setVisible(not note.is_deleted)
+        self._restore_action.setVisible(note.is_deleted)
         self._title.setReadOnly(note.is_deleted)
         self._editor.setReadOnly(note.is_deleted)
-        self._attach_btn.setEnabled(not note.is_deleted)
+        self._new_cat_btn.setEnabled(not note.is_deleted)
         self._update_words()
+        self._update_cursor_pos()
         self._loading = False
 
     def load_attachments(self, attachments: list[Attachment]) -> None:
@@ -278,10 +403,7 @@ class NoteEditorPanel(QWidget):
         for att in attachments:
             btn = QPushButton(att.filename[:24])
             btn.setToolTip(f"{att.filename} ({att.size_bytes // 1024} KB)")
-            aid = att.id
             btn.clicked.connect(lambda _c, a=att: self._open_attachment(a))
-            if aid:
-                btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             self._att_row.addWidget(btn)
         self._att_row.addStretch()
         self._style_chips()
@@ -314,25 +436,29 @@ class NoteEditorPanel(QWidget):
         self._loading = True
         self._note_id = None
         self._is_deleted = False
+        self._overrides = OrganizationOverrides()
         self._title.clear()
         self._editor.clear()
         self._meta.clear()
-        self._cats.clear()
-        self._tags.clear()
+        self._cats.setText("Categories: —")
+        self._tags.setText("Tags: —")
         self._words.clear()
         self._rel.hide()
         self._bl_scroll.hide()
         self._att_label.hide()
         self._att_scroll.hide()
-        self._delete_btn.setVisible(True)
-        self._restore_btn.hide()
+        self._delete_action.setVisible(True)
+        self._restore_action.setVisible(False)
         self._title.setReadOnly(False)
         self._editor.setReadOnly(False)
-        self._attach_btn.setEnabled(True)
-        self._pin_btn.setChecked(False)
-        self._pin_btn.setText("Pin")
+        self._new_cat_btn.setEnabled(True)
+        self._pin_action.setChecked(False)
+        self._pin_action.setText("Pin note")
+        self._prev_action.setChecked(False)
+        self._stack.setCurrentIndex(0)
         self._show_empty(False)
         self._title.setFocus()
+        self._update_cursor_pos()
         self._loading = False
 
     def get_title(self) -> str:
@@ -348,15 +474,19 @@ class NoteEditorPanel(QWidget):
     def set_note_id(self, nid: int) -> None:
         self._note_id = nid
 
-    def _toggle_preview(self, on: bool) -> None:
+    def _menu_preview(self, on: bool) -> None:
         self._preview = on
         if on:
             self._render_preview()
             self._stack.setCurrentIndex(1)
-            self._prev_btn.setText("Edit")
         else:
             self._stack.setCurrentIndex(0)
-            self._prev_btn.setText("Preview")
+        self._editor.setFocus()
+
+    def _menu_pin(self, on: bool) -> None:
+        if self._note_id:
+            self.pin_toggled.emit(self._note_id, on)
+            self._pin_action.setText("Unpin note" if on else "Pin note")
 
     def _render_preview(self) -> None:
         p = self._palette
@@ -373,6 +503,7 @@ class NoteEditorPanel(QWidget):
           pre{{padding:12px;overflow-x:auto;}}
           blockquote{{border-left:3px solid {p.accent};margin-left:0;padding-left:12px;color:{p.text_muted};}}
           a{{color:{p.accent};}}
+          strong{{color:{p.text_primary};}}
         </style>
         <h1>{self._title.text() or 'Untitled'}</h1>
         {body}
@@ -380,7 +511,7 @@ class NoteEditorPanel(QWidget):
 
     def _update_words(self) -> None:
         t = self._editor.toPlainText()
-        self._words.setText(f"{len(t.split())} words · {len(t)} chars")
+        self._words.setText(f"{len(t.split())} words · {len(t)} characters")
 
     def _on_edit(self) -> None:
         if not self._loading:
@@ -388,11 +519,6 @@ class NoteEditorPanel(QWidget):
             self._update_words()
             if self._preview:
                 self._render_preview()
-
-    def _toggle_pin(self) -> None:
-        if self._note_id:
-            self.pin_toggled.emit(self._note_id, self._pin_btn.isChecked())
-            self._pin_btn.setText("Unpin" if self._pin_btn.isChecked() else "Pin")
 
     def _delete_note(self) -> None:
         if self._note_id and QMessageBox.question(
@@ -414,30 +540,34 @@ class NoteEditorPanel(QWidget):
 
     def _lock_category(self) -> None:
         cat = self._lock_cat.currentData()
-        if not cat or not self._note_id:
+        if not cat:
+            return
+        if not self._note_id:
+            QMessageBox.information(
+                self, "Save First",
+                "Start typing — the note will save automatically, then you can lock a category.",
+            )
             return
         if cat not in self._overrides.locked_categories:
             self._overrides.locked_categories.append(cat)
             self.overrides_changed.emit(self._note_id)
 
+    def lock_category_by_name(self, name: str) -> None:
+        if name not in self._overrides.locked_categories:
+            self._overrides.locked_categories.append(name)
+        if self._note_id:
+            self.overrides_changed.emit(self._note_id)
+
     def _add_tag_override(self) -> None:
         tag = self._add_tag.text().strip().lower()
-        if not tag or not self._note_id:
+        if not tag:
+            return
+        if not self._note_id:
+            QMessageBox.information(self, "Save First", "The note will save automatically once you start writing.")
             return
         if tag not in self._overrides.added_tags:
             self._overrides.added_tags.append(tag)
             self._add_tag.clear()
-            self.overrides_changed.emit(self._note_id)
-
-    def remove_tag_override_prompt(self) -> None:
-        if not self._note_id or not self._overrides.added_tags:
-            return
-        tag, ok = QInputDialog.getItem(
-            self, "Remove Tag Override", "Tag:", self._overrides.added_tags, 0, False,
-        )
-        if ok and tag in self._overrides.added_tags:
-            self._overrides.added_tags.remove(tag)
-            self._overrides.removed_tags.append(tag)
             self.overrides_changed.emit(self._note_id)
 
     def get_overrides(self) -> OrganizationOverrides:

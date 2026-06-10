@@ -5,6 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QHBoxLayout,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -21,6 +23,7 @@ class NavPanel(QWidget):
     view_changed = Signal(str)
     filter_selected = Signal(str, str)
     new_note_requested = Signal()
+    add_category_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -74,8 +77,17 @@ class NavPanel(QWidget):
         layout.addWidget(self._quick_tree)
 
         layout.addSpacing(8)
+        cat_header_row = QHBoxLayout()
         self._cat_header = SectionLabel("Categories")
-        layout.addWidget(self._cat_header)
+        cat_header_row.addWidget(self._cat_header)
+        cat_header_row.addStretch()
+        self._add_cat_btn = QPushButton("+")
+        self._add_cat_btn.setFixedSize(28, 28)
+        self._add_cat_btn.setToolTip("Add new category")
+        self._add_cat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._add_cat_btn.clicked.connect(lambda checked=False: self.add_category_requested.emit())
+        cat_header_row.addWidget(self._add_cat_btn)
+        layout.addLayout(cat_header_row)
 
         self._category_tree = QTreeWidget()
         self._category_tree.setHeaderHidden(True)
@@ -97,6 +109,20 @@ class NavPanel(QWidget):
         self._quick_header.apply_palette(p)
         self._folder_header.apply_palette(p)
         self._new_btn.apply_palette(p)
+        self._add_cat_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {p.accent_subtle};
+                color: {p.accent_text};
+                border: 1px solid {p.accent};
+                border-radius: 14px;
+                font-weight: 700;
+                font-size: 16px;
+            }}
+            QPushButton:hover {{
+                background: {p.accent};
+                color: white;
+            }}
+        """)
         for btn in self._nav_buttons:
             btn.apply_palette(p)
 

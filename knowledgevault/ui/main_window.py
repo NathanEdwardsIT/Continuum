@@ -115,10 +115,10 @@ class MainWindow(QMainWindow):
         self._splitter.addWidget(self._stack)
 
         self._editor = NoteEditorPanel()
-        self._editor.setMinimumWidth(400)
+        self._editor.setMinimumWidth(460)
         self._splitter.addWidget(self._editor)
 
-        self._splitter.setSizes([260, 520, 480])
+        self._splitter.setSizes([260, 480, 520])
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setStretchFactor(2, 0)
@@ -160,6 +160,7 @@ class MainWindow(QMainWindow):
         self._nav.view_changed.connect(self._on_view_changed)
         self._nav.filter_selected.connect(self._on_filter_selected)
         self._nav.new_note_requested.connect(self._on_new_note)
+        self._nav.add_category_requested.connect(self._on_add_category)
 
         self._note_list.note_selected.connect(self._on_note_selected)
         self._note_list.search_changed.connect(self._on_search_filters)
@@ -172,6 +173,7 @@ class MainWindow(QMainWindow):
         self._editor.pin_toggled.connect(self._on_pin_toggled)
         self._editor.overrides_changed.connect(self._on_overrides_changed)
         self._editor.attachment_added.connect(self._on_attachment_action)
+        self._editor.add_category_requested.connect(self._on_add_category)
         self._graph.note_selected.connect(self._on_graph_note_selected)
         self._graph.filter_changed.connect(self._on_graph_filter_changed)
         self._graph.layout_changed.connect(self._on_graph_layout_changed)
@@ -376,16 +378,34 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self._refresh_all()
 
+    def _on_add_category(self) -> None:
+        from continuum.ui.widgets.add_category_dialog import AddCategoryDialog
+        dlg = AddCategoryDialog(self.service, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        name = dlg.category_name
+        self._refresh_nav()
+        self._status.showMessage(f"Category '{name}' created", 3000)
+        if self._editor.current_note_id:
+            self._editor.lock_category_by_name(name)
+            note = self.service.get_note(self._editor.current_note_id)
+            if note:
+                self._editor.load_note(note)
+
     def _focus_search(self) -> None:
         self._stack.setCurrentIndex(1)
         self._note_list._search.setFocus()
 
     def _toggle_preview(self) -> None:
-        self._editor._prev_btn.click()
+        checked = not self._editor._prev_action.isChecked()
+        self._editor._prev_action.setChecked(checked)
+        self._editor._menu_preview(checked)
 
     def _toggle_pin(self) -> None:
         if self._editor.current_note_id:
-            self._editor._pin_btn.click()
+            checked = not self._editor._pin_action.isChecked()
+            self._editor._pin_action.setChecked(checked)
+            self._editor._menu_pin(checked)
 
     def _shortcut_delete(self) -> None:
         if self._editor.current_note_id and not self._editor._is_deleted:
@@ -460,7 +480,7 @@ class MainWindow(QMainWindow):
         self._focus_mode = on
         self._nav.setVisible(not on)
         self._top_bar.setVisible(not on)
-        self._splitter.setSizes([0, 0, 2000] if on else [260, 520, 480])
+        self._splitter.setSizes([0, 0, 2000] if on else [260, 480, 520])
 
     def _on_export_report(self) -> None:
         d = ReportDialog(self)
