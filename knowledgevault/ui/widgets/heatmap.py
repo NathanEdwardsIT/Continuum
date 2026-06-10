@@ -6,9 +6,9 @@ from PySide6.QtCore import Qt, QRectF, QSize
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from knowledgevault.services.insights_engine import DayActivity
-from knowledgevault.ui.theme_palette import ThemePalette, get_palette
-from knowledgevault.ui.theme_palette import ThemeId
+from continuum.services.insights_engine import DayActivity
+from continuum.ui.theme_palette import ThemePalette, get_palette
+from continuum.ui.theme_palette import ThemeId
 
 
 class ActivityHeatmap(QWidget):

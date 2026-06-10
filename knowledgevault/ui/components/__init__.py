@@ -1,9 +1,9 @@
 """Reusable design-system components."""
 
-from knowledgevault.ui.components.buttons import GhostButton, NavButton, PrimaryButton
-from knowledgevault.ui.components.card import ElevatedCard, GlassPanel
-from knowledgevault.ui.components.inputs import SearchField
-from knowledgevault.ui.components.typography import H1, H2, Body, Caption, Badge
+from continuum.ui.components.buttons import GhostButton, NavButton, PrimaryButton
+from continuum.ui.components.card import ElevatedCard, GlassPanel
+from continuum.ui.components.inputs import SearchField
+from continuum.ui.components.typography import H1, H2, Body, Caption, Badge
 
 __all__ = [
     "Badge",

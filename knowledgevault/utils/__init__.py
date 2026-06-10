@@ -1,6 +1,6 @@
 """Utility helpers."""
 
-from knowledgevault.utils.text_processing import (
+from continuum.utils.text_processing import (
     extract_keywords,
     score_categories,
     tokenize,

@@ -1,6 +1,6 @@
 """Database layer."""
 
-from knowledgevault.database.connection import DatabaseConnection
-from knowledgevault.database.repository import NoteRepository
+from continuum.database.connection import DatabaseConnection
+from continuum.database.repository import NoteRepository
 
 __all__ = ["DatabaseConnection", "NoteRepository"]

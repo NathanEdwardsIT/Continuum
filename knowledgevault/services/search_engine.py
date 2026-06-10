@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 
-from knowledgevault.database.repository import NoteRepository
-from knowledgevault.models.entities import SearchResult
+from continuum.database.repository import NoteRepository
+from continuum.models.entities import SearchFilters, SearchResult
 
 
 class SearchEngine:
@@ -13,6 +13,9 @@ class SearchEngine:
 
     def __init__(self, repository: NoteRepository) -> None:
         self._repo = repository
+
+    def search_with_filters(self, filters: SearchFilters, limit: int = 50) -> list:
+        return self._repo.search_notes(filters, limit=limit)
 
     def search(self, query: str, limit: int = 50) -> list[SearchResult]:
         """Search notes using FTS5 with fallback to LIKE."""
@@ -46,7 +49,7 @@ class SearchEngine:
                         -rank as rank
                     FROM notes_fts
                     JOIN notes n ON notes_fts.rowid = n.id
-                    WHERE notes_fts MATCH ?{clause}
+                    WHERE notes_fts MATCH ? AND n.deleted_at IS NULL{clause}
                     ORDER BY rank
                     LIMIT ?
                     """,
@@ -65,8 +68,8 @@ class SearchEngine:
             cur.execute(
                 f"""
                 SELECT id, title, content FROM notes
-                WHERE (title LIKE ? OR content LIKE ?){clause}
-                ORDER BY modified_at DESC LIMIT ?
+                WHERE (title LIKE ? OR content LIKE ?){clause}{self._repo._active_clause()}
+                ORDER BY pinned DESC, modified_at DESC LIMIT ?
                 """,
                 (pattern, pattern, *params, limit),
             )

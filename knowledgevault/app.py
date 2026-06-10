@@ -7,12 +7,12 @@ import sys
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtWidgets import QApplication
 
-from knowledgevault.config import APP_NAME
-from knowledgevault.database.connection import DatabaseConnection
-from knowledgevault.services.auth_service import AuthService
-from knowledgevault.services.note_service import NoteService
-from knowledgevault.ui.main_window import MainWindow
-from knowledgevault.ui.widgets.login_dialog import LoginDialog
+from continuum.config import APP_NAME
+from continuum.database.connection import DatabaseConnection
+from continuum.services.auth_service import AuthService
+from continuum.services.note_service import NoteService
+from continuum.ui.main_window import MainWindow
+from continuum.ui.widgets.login_dialog import LoginDialog
 
 
 def _restore_session(auth: AuthService, settings: QSettings):
@@ -27,18 +27,18 @@ def _restore_session(auth: AuthService, settings: QSettings):
 
 
 def run(seed_example_data: bool = False) -> int:
-    """Launch the KnowledgeVault application."""
+    """Launch the continuum application."""
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setApplicationName(APP_NAME)
-    app.setOrganizationName("KnowledgeVault")
+    app.setOrganizationName("Continuum")
 
     db = DatabaseConnection()
     auth = AuthService(db)
-    settings = QSettings("KnowledgeVault", "KnowledgeVault")
+    settings = QSettings("Continuum", "Continuum")
 
     user = _restore_session(auth, settings)
     if user is None:
@@ -50,7 +50,7 @@ def run(seed_example_data: bool = False) -> int:
         settings.setValue("session_user_id", user.id)
 
     if seed_example_data:
-        from knowledgevault.data.seed import seed_example_notes
+        from continuum.data.seed import seed_example_notes
         seed_example_notes(NoteService(db, user.id))
 
     window = MainWindow(NoteService(db, user.id), user=user, auth=auth, settings=settings)

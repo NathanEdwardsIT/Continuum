@@ -5,14 +5,14 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
-from knowledgevault.models.entities import ActivityStats, Note
-from knowledgevault.services.collections_engine import SmartCollection
-from knowledgevault.services.insights_engine import WritingInsights
-from knowledgevault.ui.components.card import ElevatedCard, GlassPanel
-from knowledgevault.ui.components.clickable import ClickableCard
-from knowledgevault.ui.components.typography import Badge, Body, Caption, H1, H2
-from knowledgevault.ui.theme_palette import ThemePalette
-from knowledgevault.ui.widgets.heatmap import ActivityHeatmap
+from continuum.models.entities import ActivityStats, Note
+from continuum.services.collections_engine import SmartCollection
+from continuum.services.insights_engine import WritingInsights
+from continuum.ui.components.card import ElevatedCard, GlassPanel
+from continuum.ui.components.clickable import ClickableCard
+from continuum.ui.components.typography import Badge, Body, Caption, H1, H2
+from continuum.ui.theme_palette import ThemePalette
+from continuum.ui.widgets.heatmap import ActivityHeatmap
 
 
 class StatTile(ElevatedCard):

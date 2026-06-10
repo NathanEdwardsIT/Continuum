@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
 
-from knowledgevault.ui.components.card import ElevatedCard
+from continuum.ui.components.card import ElevatedCard
 
 
 class ClickableCard(ElevatedCard):

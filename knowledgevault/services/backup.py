@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from knowledgevault.database.connection import DatabaseConnection
+from continuum.database.connection import DatabaseConnection
 
 
 class BackupService(QObject):

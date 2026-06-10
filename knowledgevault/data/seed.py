@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knowledgevault.services.note_service import NoteService
+from continuum.services.note_service import NoteService
 
 EXAMPLE_NOTES = [
     {

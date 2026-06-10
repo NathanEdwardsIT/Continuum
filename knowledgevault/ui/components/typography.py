@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel
 
-from knowledgevault.ui.theme_palette import ThemePalette
+from continuum.ui.theme_palette import ThemePalette
 
 
 class H1(QLabel):

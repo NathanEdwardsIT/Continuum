@@ -1,6 +1,6 @@
 """Data models."""
 
-from knowledgevault.models.entities import (
+from continuum.models.entities import (
     Backlink,
     Category,
     Folder,

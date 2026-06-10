@@ -19,7 +19,11 @@ CREATE TABLE IF NOT EXISTS notes (
     title TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
-    modified_at TEXT NOT NULL
+    modified_at TEXT NOT NULL,
+    deleted_at TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    pinned_at TEXT,
+    organization_overrides TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -85,6 +89,32 @@ CREATE INDEX IF NOT EXISTS idx_notes_modified ON notes(modified_at);
 CREATE INDEX IF NOT EXISTS idx_backlinks_source ON backlinks(source_note_id);
 CREATE INDEX IF NOT EXISTS idx_backlinks_target ON backlinks(target_note_id);
 CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_notes_deleted ON notes(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes(pinned);
+
+CREATE TABLE IF NOT EXISTS attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id);
+
+CREATE TABLE IF NOT EXISTS category_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    keywords TEXT NOT NULL DEFAULT '[]',
+    is_builtin INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_profiles_user ON category_profiles(user_id);
 """
 
 FTS_TRIGGERS_SQL = """

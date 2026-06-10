@@ -9,9 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generator
 
-from knowledgevault.config import BACKUP_DIR, DB_PATH
-from knowledgevault.database.migrations import run_migrations
-from knowledgevault.database.schema import FTS_TRIGGERS_SQL, SCHEMA_SQL
+from continuum.config import ATTACHMENTS_DIR, BACKUP_DIR, DB_PATH
+from continuum.database.migrations import run_migrations
+from continuum.database.schema import FTS_TRIGGERS_SQL, SCHEMA_SQL
 
 
 class DatabaseConnection:
@@ -21,6 +21,7 @@ class DatabaseConnection:
         self.db_path = db_path or DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
         self._initialize()
 

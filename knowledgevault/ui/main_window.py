@@ -23,19 +23,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from knowledgevault.config import AUTOSAVE_INTERVAL_MS, BACKUP_INTERVAL_MS
-from knowledgevault.services.autosave import AutosaveManager
-from knowledgevault.services.backup import BackupService
-from knowledgevault.services.note_service import NoteService
-from knowledgevault.ui.theme_engine import ThemeEngine
-from knowledgevault.ui.theme_palette import ThemeId
-from knowledgevault.ui.widgets.dashboard import DashboardWidget
-from knowledgevault.ui.widgets.graph_view import GraphViewWidget
-from knowledgevault.ui.widgets.nav_panel import NavPanel
-from knowledgevault.ui.widgets.note_editor import NoteEditorPanel
-from knowledgevault.ui.widgets.note_list import NoteListPanel
-from knowledgevault.ui.widgets.top_bar import TopBar
-from knowledgevault.ui.workers import GraphWorker, ReportWorker, SearchWorker, get_thread_pool
+from continuum.config import AUTOSAVE_INTERVAL_MS, BACKUP_INTERVAL_MS
+from continuum.services.autosave import AutosaveManager
+from continuum.services.backup import BackupService
+from continuum.models.entities import SearchFilters
+from continuum.services.note_service import NoteService
+from continuum.ui.theme_engine import ThemeEngine
+from continuum.ui.theme_palette import ThemeId
+from continuum.ui.widgets.dashboard import DashboardWidget
+from continuum.ui.widgets.graph_view import GraphViewWidget
+from continuum.ui.widgets.nav_panel import NavPanel
+from continuum.ui.widgets.note_editor import NoteEditorPanel
+from continuum.ui.widgets.note_list import NoteListPanel
+from continuum.ui.widgets.top_bar import TopBar
+from continuum.ui.workers import GraphWorker, ReportWorker, SearchWorker, get_thread_pool
 
 
 class MainWindow(QMainWindow):
@@ -50,7 +51,7 @@ class MainWindow(QMainWindow):
         self.service = service or NoteService()
         self._auth = auth
         self._user = user
-        self._settings = settings or QSettings("KnowledgeVault", "KnowledgeVault")
+        self._settings = settings or QSettings("Continuum", "Continuum")
         self._engine = ThemeEngine.instance()
         saved = self._settings.value("theme", ThemeId.STUDIO.value)
         for legacy in ("neon_studio", "arctic"):
@@ -70,7 +71,7 @@ class MainWindow(QMainWindow):
         self._graph_layout = "spring"
         self._focus_mode = False
 
-        self.setWindowTitle("KnowledgeVault")
+        self.setWindowTitle("Continuum")
         self.setMinimumSize(1280, 800)
         self.resize(1480, 920)
         self.menuBar().setVisible(False)
@@ -130,6 +131,13 @@ class MainWindow(QMainWindow):
 
     def _setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+N"), self, self._on_new_note)
+        QShortcut(QKeySequence("Ctrl+F"), self, self._focus_search)
+        QShortcut(QKeySequence("Ctrl+P"), self, self._toggle_preview)
+        QShortcut(QKeySequence("Ctrl+Shift+P"), self, self._toggle_pin)
+        QShortcut(QKeySequence("Delete"), self, self._shortcut_delete)
+        QShortcut(QKeySequence("Ctrl+1"), self, lambda: self._on_view_changed("dashboard"))
+        QShortcut(QKeySequence("Ctrl+2"), self, lambda: self._on_view_changed("notes"))
+        QShortcut(QKeySequence("Ctrl+3"), self, lambda: self._on_view_changed("graph"))
         QShortcut(QKeySequence("Ctrl+Shift+F"), self, self._toggle_focus_mode)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
@@ -147,16 +155,23 @@ class MainWindow(QMainWindow):
         self._top_bar.export_requested.connect(self._on_export_report)
         self._top_bar.backup_requested.connect(self._on_backup)
         self._top_bar.logout_requested.connect(self._on_logout)
+        self._top_bar.category_settings_requested.connect(self._on_category_settings)
 
         self._nav.view_changed.connect(self._on_view_changed)
         self._nav.filter_selected.connect(self._on_filter_selected)
         self._nav.new_note_requested.connect(self._on_new_note)
 
         self._note_list.note_selected.connect(self._on_note_selected)
-        self._note_list.search_changed.connect(self._on_search)
+        self._note_list.search_changed.connect(self._on_search_filters)
+        self._note_list.trash_empty_requested.connect(self._on_empty_trash)
         self._editor.content_changed.connect(self._autosave.mark_dirty)
         self._editor.focus_mode_toggled.connect(self._on_focus_mode)
         self._editor.backlink_clicked.connect(self._on_note_selected)
+        self._editor.delete_requested.connect(self._on_delete_note)
+        self._editor.restore_requested.connect(self._on_restore_note)
+        self._editor.pin_toggled.connect(self._on_pin_toggled)
+        self._editor.overrides_changed.connect(self._on_overrides_changed)
+        self._editor.attachment_added.connect(self._on_attachment_action)
         self._graph.note_selected.connect(self._on_graph_note_selected)
         self._graph.filter_changed.connect(self._on_graph_filter_changed)
         self._graph.layout_changed.connect(self._on_graph_layout_changed)
@@ -174,12 +189,23 @@ class MainWindow(QMainWindow):
         self._refresh_dashboard()
 
     def _refresh_nav(self) -> None:
-        self._nav.update_categories(self.service.get_categories())
+        cats = self.service.get_categories()
+        self._nav.update_categories(cats)
         self._nav.update_folders(self.service.get_folders())
+        self._note_list.set_category_options([c.name for c in cats])
+        profile_names = [p.name for p in self.service.categories.get_profiles()]
+        self._editor.set_category_options(profile_names)
 
     def _refresh_note_list(self) -> None:
-        if self._filter_type and self._filter_value:
+        if self._filter_type == "trash":
+            self._note_list.set_trash_mode(True)
+            self._note_list.set_notes(self.service.get_trash_notes())
+            return
+        self._note_list.set_trash_mode(False)
+        if self._filter_type and self._filter_value is not None:
             notes = self.service.get_notes_by_filter(self._filter_type, self._filter_value)
+        elif self._filter_type == "pinned":
+            notes = self.service.get_notes_by_filter("pinned", "")
         else:
             notes = self.service.get_all_notes()
         self._note_list.set_notes(notes)
@@ -199,8 +225,9 @@ class MainWindow(QMainWindow):
             self._refresh_dashboard()
         elif view == "notes":
             self._stack.setCurrentIndex(1)
-            self._filter_type = None
-            self._filter_value = None
+            if self._filter_type != "trash":
+                self._filter_type = None
+                self._filter_value = None
             self._refresh_note_list()
         elif view == "graph":
             self._stack.setCurrentIndex(2)
@@ -209,6 +236,8 @@ class MainWindow(QMainWindow):
     def _on_filter_selected(self, ft: str, fv: str) -> None:
         self._stack.setCurrentIndex(1)
         self._filter_type, self._filter_value = ft, fv
+        self._top_bar.set_active_view("notes")
+        self._nav.set_active_view("notes")
         self._refresh_note_list()
 
     def _on_collection_clicked(self, cid: str) -> None:
@@ -236,19 +265,29 @@ class MainWindow(QMainWindow):
         if note:
             self._editor.load_note(note)
             self._editor.load_backlinks(self.service.get_backlinks(nid))
+            self._editor.load_attachments(self.service.get_attachments(nid))
 
     def _on_graph_note_selected(self, nid: int) -> None:
         self._stack.setCurrentIndex(1)
         self._note_list.select_note(nid)
         self._on_note_selected(nid)
 
-    def _on_search(self, q: str) -> None:
-        if not q.strip():
+    def _on_search_filters(self, filters: SearchFilters) -> None:
+        if not any([
+            filters.query.strip(),
+            filters.category,
+            filters.tag,
+            filters.modified_after,
+            filters.modified_before,
+            filters.pinned_only,
+        ]):
             self._refresh_note_list()
             return
-        w = SearchWorker(self.service, q)
-        w.signals.finished.connect(self._note_list.set_search_results)
-        get_thread_pool().start(w)
+        notes = self.service.search_filtered(filters)
+        self._note_list.set_notes(notes)
+
+    def _on_search(self, q: str) -> None:
+        self._on_search_filters(SearchFilters(query=q))
 
     def _autosave_callback(self):
         title, content = self._editor.get_title(), self._editor.get_content()
@@ -268,6 +307,89 @@ class MainWindow(QMainWindow):
         if note:
             self._editor.load_note(note)
             self._editor.load_backlinks(self.service.get_backlinks(nid))
+            self._editor.load_attachments(self.service.get_attachments(nid))
+
+        if note:
+            self._editor.load_note(note)
+            self._editor.load_backlinks(self.service.get_backlinks(nid))
+            self._editor.load_attachments(self.service.get_attachments(nid))
+
+    def _on_delete_note(self, nid: int) -> None:
+        self.service.move_to_trash(nid)
+        self._editor.new_note()
+        self._refresh_all()
+        self._status.showMessage("Moved to trash", 2000)
+
+    def _on_restore_note(self, nid: int) -> None:
+        self.service.restore_note(nid)
+        self._filter_type = None
+        self._filter_value = None
+        self._refresh_all()
+        self._on_note_selected(nid)
+        self._status.showMessage("Note restored", 2000)
+
+    def _on_empty_trash(self) -> None:
+        if QMessageBox.question(
+            self, "Empty Trash", "Permanently delete all trashed notes?",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        count = self.service.empty_trash()
+        self._editor.new_note()
+        self._refresh_all()
+        self._status.showMessage(f"Deleted {count} notes", 3000)
+
+    def _on_pin_toggled(self, nid: int, pinned: bool) -> None:
+        self.service.set_pinned(nid, pinned)
+        self._refresh_note_list()
+
+    def _on_overrides_changed(self, nid: int) -> None:
+        self.service.update_overrides(nid, self._editor.get_overrides())
+        note = self.service.get_note(nid)
+        if note:
+            self._editor.load_note(note)
+        self._refresh_nav()
+
+    def _on_attachment_action(self, note_id: int, path_or_id: str) -> None:
+        if Path(path_or_id).exists():
+            if self._editor.current_note_id is None:
+                self._autosave.force_save()
+            nid = self._editor.current_note_id or note_id
+            if not nid:
+                return
+            att = self.service.add_attachment(nid, Path(path_or_id))
+            self._editor.load_attachments(self.service.get_attachments(att.note_id))
+            self._status.showMessage("Attachment added", 2000)
+        else:
+            try:
+                att_id = int(path_or_id)
+                for att in self.service.get_attachments(note_id):
+                    if att.id == att_id:
+                        path = self.service.open_attachment(att)
+                        NoteEditorPanel.open_file_path(str(path))
+                        break
+            except ValueError:
+                pass
+
+    def _on_category_settings(self) -> None:
+        from continuum.ui.widgets.category_settings_dialog import CategorySettingsDialog
+        dlg = CategorySettingsDialog(self.service, self)
+        if dlg.exec():
+            self._refresh_all()
+
+    def _focus_search(self) -> None:
+        self._stack.setCurrentIndex(1)
+        self._note_list._search.setFocus()
+
+    def _toggle_preview(self) -> None:
+        self._editor._prev_btn.click()
+
+    def _toggle_pin(self) -> None:
+        if self._editor.current_note_id:
+            self._editor._pin_btn.click()
+
+    def _shortcut_delete(self) -> None:
+        if self._editor.current_note_id and not self._editor._is_deleted:
+            self._on_delete_note(self._editor.current_note_id)
 
     def _load_graph(self) -> None:
         w = GraphWorker(
@@ -310,7 +432,7 @@ class MainWindow(QMainWindow):
         self._settings.remove("session_user_id")
         self.hide()
 
-        from knowledgevault.ui.widgets.login_dialog import LoginDialog
+        from continuum.ui.widgets.login_dialog import LoginDialog
 
         if self._auth is None:
             self.close()

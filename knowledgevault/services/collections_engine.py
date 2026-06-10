@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from knowledgevault.database.repository import NoteRepository
-from knowledgevault.models.entities import Note
+from continuum.database.repository import NoteRepository
+from continuum.models.entities import Note
 
 
 @dataclass

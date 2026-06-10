@@ -7,7 +7,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
-from knowledgevault.database.connection import DatabaseConnection
+from continuum.database.connection import DatabaseConnection
 
 
 class AuthError(Exception):

@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from knowledgevault.database.repository import NoteRepository
+from continuum.database.repository import NoteRepository
 
 
 @dataclass

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knowledgevault.ui.theme_palette import ThemeId, ThemePalette, get_palette
+from continuum.ui.theme_palette import ThemeId, ThemePalette, get_palette
 
 Theme = ThemeId
 

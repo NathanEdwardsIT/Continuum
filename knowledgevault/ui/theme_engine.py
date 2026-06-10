@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QWidget
 
-from knowledgevault.ui.theme_palette import ThemeId, ThemePalette, get_palette
-from knowledgevault.ui.themes import get_stylesheet
+from continuum.ui.theme_palette import ThemeId, ThemePalette, get_palette
+from continuum.ui.themes import get_stylesheet
 
 
 class ThemeEngine:

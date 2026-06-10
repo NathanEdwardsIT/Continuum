@@ -21,8 +21,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from knowledgevault.database.repository import NoteRepository
-from knowledgevault.models.entities import ReportData
+from continuum.database.repository import NoteRepository
+from continuum.models.entities import ReportData
 
 
 class ReportGenerator:
@@ -126,7 +126,7 @@ class ReportGenerator:
 
         # Cover
         story.append(Spacer(1, 1.5 * inch))
-        story.append(Paragraph("KnowledgeVault", title_style))
+        story.append(Paragraph("continuum", title_style))
         story.append(Paragraph("Activity Report", subtitle_style))
         date_range = (
             f"{data.start_date.strftime('%B %d, %Y')} — {data.end_date.strftime('%B %d, %Y')}"

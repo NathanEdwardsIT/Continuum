@@ -7,9 +7,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
-from knowledgevault.models.entities import SearchResult
-from knowledgevault.services.note_service import NoteService
-from knowledgevault.services.report_generator import ReportGenerator
+from continuum.models.entities import SearchResult
+from continuum.services.note_service import NoteService
+from continuum.services.report_generator import ReportGenerator
 
 
 class WorkerSignals(QObject):

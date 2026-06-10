@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QLineEdit
 
-from knowledgevault.ui.theme_palette import ThemePalette
+from continuum.ui.theme_palette import ThemePalette
 
 
 class SearchField(QLineEdit):

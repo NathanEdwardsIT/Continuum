@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsDropShadowEffect, QVBoxLayout, QWidget
 
-from knowledgevault.ui.theme_palette import ThemePalette
+from continuum.ui.theme_palette import ThemePalette
 
 
 def _shadow(widget: QWidget, blur: int = 32, y: int = 6, alpha: int = 80) -> None:

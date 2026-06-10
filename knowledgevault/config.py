@@ -5,19 +5,36 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-APP_NAME = "KnowledgeVault"
-APP_VERSION = "1.0.0"
+APP_NAME = "Continuum"
+APP_VERSION = "1.1.0"
 
-# Default data directory in user's home
-DATA_DIR = Path(os.environ.get("KNOWLEDGEVAULT_DATA", Path.home() / ".knowledgevault"))
+_LEGACY_DATA = Path.home() / ".knowledgevault"
+_DEFAULT_DATA = Path.home() / ".continuum"
+
+
+def _resolve_data_dir() -> Path:
+    if env := os.environ.get("CONTINUUM_DATA"):
+        return Path(env)
+    if legacy := os.environ.get("KNOWLEDGEVAULT_DATA"):
+        return Path(legacy)
+    if _DEFAULT_DATA.exists():
+        return _DEFAULT_DATA
+    if _LEGACY_DATA.exists():
+        return _LEGACY_DATA
+    return _DEFAULT_DATA
+
+
+DATA_DIR = _resolve_data_dir()
 DB_PATH = DATA_DIR / "vault.db"
 BACKUP_DIR = DATA_DIR / "backups"
+ATTACHMENTS_DIR = DATA_DIR / "attachments"
 
 AUTOSAVE_INTERVAL_MS = 3000
-BACKUP_INTERVAL_MS = 300_000  # 5 minutes
+BACKUP_INTERVAL_MS = 300_000
 MAX_BACKUPS = 10
+TRASH_RETENTION_DAYS = 30
 
-# Category keyword profiles (AI-free rule-based classification)
+# Built-in category keyword profiles (AI-free rule-based classification)
 CATEGORY_PROFILES: dict[str, list[str]] = {
     "Programming": [
         "python", "javascript", "code", "function", "class", "api", "database",

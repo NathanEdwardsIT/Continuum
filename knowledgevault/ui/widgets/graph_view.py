@@ -27,10 +27,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from knowledgevault.models.entities import GraphEdge, GraphNode, NodeType
-from knowledgevault.ui.components.buttons import GhostButton, PrimaryButton
-from knowledgevault.ui.components.typography import Body, Caption, H1, H2
-from knowledgevault.ui.theme_palette import ThemePalette, ThemeId, get_palette
+from continuum.models.entities import GraphEdge, GraphNode, NodeType
+from continuum.ui.components.buttons import GhostButton, PrimaryButton
+from continuum.ui.components.typography import Body, Caption, H1, H2
+from continuum.ui.theme_palette import ThemePalette, ThemeId, get_palette
 
 
 class GraphCanvas(QWidget):
@@ -407,7 +407,7 @@ class GraphViewWidget(QWidget):
         tb_layout.setContentsMargins(10, 8, 10, 8)
         tb_layout.setSpacing(8)
 
-        from knowledgevault.ui.components.inputs import SearchField
+        from continuum.ui.components.inputs import SearchField
         self._search = SearchField("Filter nodes…")
         self._search.setFixedWidth(200)
         self._search.textChanged.connect(self._on_filter_text)

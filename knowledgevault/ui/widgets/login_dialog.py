@@ -14,11 +14,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from knowledgevault.services.auth_service import AuthError, AuthService, User
-from knowledgevault.ui.components.buttons import GhostButton, PrimaryButton
-from knowledgevault.ui.components.typography import Body, Caption, H1
-from knowledgevault.ui.theme_engine import ThemeEngine
-from knowledgevault.ui.theme_palette import ThemeId, get_palette
+from continuum.services.auth_service import AuthError, AuthService, User
+from continuum.ui.components.buttons import GhostButton, PrimaryButton
+from continuum.ui.components.typography import Body, Caption, H1
+from continuum.ui.theme_engine import ThemeEngine
+from continuum.ui.theme_palette import ThemeId, get_palette
 
 
 class LoginDialog(QDialog):
@@ -30,7 +30,7 @@ class LoginDialog(QDialog):
         self._user: User | None = None
         self._palette = get_palette(ThemeId.STUDIO)
 
-        self.setWindowTitle("KnowledgeVault — Sign In")
+        self.setWindowTitle("Continuum — Sign In")
         self.setModal(True)
         self.setMinimumWidth(420)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
@@ -47,7 +47,7 @@ class LoginDialog(QDialog):
         root.setContentsMargins(32, 28, 32, 28)
         root.setSpacing(16)
 
-        self._title = H1("Welcome to KnowledgeVault")
+        self._title = H1("Welcome to Continuum")
         root.addWidget(self._title)
         self._subtitle = Body("Sign in to access your private vault.")
         root.addWidget(self._subtitle)

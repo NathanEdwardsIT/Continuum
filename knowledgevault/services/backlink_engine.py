@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from knowledgevault.models.entities import Backlink
-from knowledgevault.utils.text_processing import compute_similarity, tokenize
+from continuum.models.entities import Backlink
+from continuum.utils.text_processing import compute_similarity, tokenize
 
 
 class BacklinkEngine:

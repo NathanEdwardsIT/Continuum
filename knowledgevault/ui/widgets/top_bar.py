@@ -14,14 +14,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from knowledgevault.ui.components.buttons import GhostButton, PrimaryButton, TabButton
-from knowledgevault.ui.components.typography import Badge
-from knowledgevault.ui.theme_palette import ThemeId, ThemePalette, get_palette
+from continuum.ui.components.buttons import GhostButton, PrimaryButton, TabButton
+from continuum.ui.components.typography import Badge
+from continuum.ui.theme_palette import ThemeId, ThemePalette, get_palette
 
 
 class LogoMark(QLabel):
   def __init__(self, parent=None) -> None:
-    super().__init__("KV", parent)
+    super().__init__("C", parent)
     self.setObjectName("logoMark")
     self.setFixedSize(32, 32)
     self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -47,6 +47,7 @@ class TopBar(QWidget):
     export_requested = Signal()
     backup_requested = Signal()
     logout_requested = Signal()
+    category_settings_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -65,7 +66,7 @@ class TopBar(QWidget):
 
         brand_col = QVBoxLayout()
         brand_col.setSpacing(0)
-        self._brand = QLabel("KnowledgeVault")
+        self._brand = QLabel("Continuum")
         self._brand.setObjectName("brandName")
         brand_col.addWidget(self._brand)
         layout.addLayout(brand_col)
@@ -116,6 +117,7 @@ class TopBar(QWidget):
         menu = QMenu(self)
         menu.addAction("Export Report…", lambda checked=False: self.export_requested.emit())
         menu.addAction("Backup Now", lambda checked=False: self.backup_requested.emit())
+        menu.addAction("Category Settings…", lambda checked=False: self.category_settings_requested.emit())
         menu.addSeparator()
         themes = menu.addMenu("Theme")
         for tid in ThemeId:
@@ -125,7 +127,7 @@ class TopBar(QWidget):
                 lambda checked=False, t=tid: self.theme_requested.emit(t),
             )
         menu.addSeparator()
-        menu.addAction("About KnowledgeVault")
+        menu.addAction("About Continuum")
         menu.exec(self._menu_btn.mapToGlobal(self._menu_btn.rect().bottomLeft()))
 
     def _show_user_menu(self) -> None:

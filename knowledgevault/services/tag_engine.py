@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knowledgevault.utils.text_processing import extract_keywords, tokenize
+from continuum.utils.text_processing import extract_keywords, tokenize
 
 
 class TagEngine:

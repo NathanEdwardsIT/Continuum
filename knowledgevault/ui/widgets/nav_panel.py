@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QTreeWidget,
@@ -11,10 +11,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from knowledgevault.ui.components.buttons import NavButton, PrimaryButton
-from knowledgevault.ui.components.typography import Caption, H2, SectionLabel
-from knowledgevault.ui.theme_palette import ThemePalette
-from knowledgevault.models.entities import Category, Folder
+from continuum.ui.components.buttons import NavButton, PrimaryButton
+from continuum.ui.components.typography import Caption, H2, SectionLabel
+from continuum.ui.theme_palette import ThemePalette
+from continuum.models.entities import Category, Folder
 
 
 class NavPanel(QWidget):
@@ -34,7 +34,7 @@ class NavPanel(QWidget):
         layout.setContentsMargins(16, 20, 16, 20)
         layout.setSpacing(4)
 
-        self._title = H2("Vault")
+        self._title = H2("Continuum")
         layout.addWidget(self._title)
         self._sub = Caption("Automatically organized")
         layout.addWidget(self._sub)
@@ -61,6 +61,19 @@ class NavPanel(QWidget):
         layout.addWidget(self._new_btn)
 
         layout.addSpacing(8)
+        self._quick_header = SectionLabel("Quick Filters")
+        layout.addWidget(self._quick_header)
+        self._quick_tree = QTreeWidget()
+        self._quick_tree.setHeaderHidden(True)
+        self._quick_tree.setMaximumHeight(72)
+        self._quick_tree.itemClicked.connect(self._on_quick_click)
+        for label, ftype, fval in [("  Pinned Notes", "pinned", ""), ("  Trash", "trash", "")]:
+            item = QTreeWidgetItem([label])
+            item.setData(0, Qt.ItemDataRole.UserRole, (ftype, fval))
+            self._quick_tree.addTopLevelItem(item)
+        layout.addWidget(self._quick_tree)
+
+        layout.addSpacing(8)
         self._cat_header = SectionLabel("Categories")
         layout.addWidget(self._cat_header)
 
@@ -81,6 +94,7 @@ class NavPanel(QWidget):
         self._title.apply_palette(p)
         self._sub.apply_palette(p)
         self._cat_header.apply_palette(p)
+        self._quick_header.apply_palette(p)
         self._folder_header.apply_palette(p)
         self._new_btn.apply_palette(p)
         for btn in self._nav_buttons:
@@ -96,7 +110,7 @@ class NavPanel(QWidget):
         self._category_tree.clear()
         for cat in categories:
             item = QTreeWidgetItem([f"  {cat.name}   {cat.note_count}"])
-            item.setData(0, 256, ("category", cat.name))
+            item.setData(0, Qt.ItemDataRole.UserRole, ("category", cat.name))
             self._category_tree.addTopLevelItem(item)
 
     def update_folders(self, folders: list[Folder]) -> None:
@@ -110,7 +124,7 @@ class NavPanel(QWidget):
                 if key not in tree_map:
                     suffix = f"  {folder.note_count}" if i == len(parts) - 1 else ""
                     item = QTreeWidgetItem([f"  {part}{suffix}"])
-                    item.setData(0, 256, ("folder", folder.name))
+                    item.setData(0, Qt.ItemDataRole.UserRole, ("folder", folder.name))
                     if parent_item:
                         parent_item.addChild(item)
                     else:
@@ -118,12 +132,17 @@ class NavPanel(QWidget):
                     tree_map[key] = item
                 parent_item = tree_map[key]
 
+    def _on_quick_click(self, item: QTreeWidgetItem, _col: int) -> None:
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data:
+            self.filter_selected.emit(data[0], data[1])
+
     def _on_category_click(self, item: QTreeWidgetItem, _col: int) -> None:
-        data = item.data(0, 256)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
         if data:
             self.filter_selected.emit(data[0], data[1])
 
     def _on_folder_click(self, item: QTreeWidgetItem, _col: int) -> None:
-        data = item.data(0, 256)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
         if data:
             self.filter_selected.emit(data[0], data[1])

@@ -7,8 +7,8 @@ from enum import Enum
 
 import networkx as nx
 
-from knowledgevault.database.repository import NoteRepository
-from knowledgevault.models.entities import GraphEdge, GraphNode, NodeType
+from continuum.database.repository import NoteRepository
+from continuum.models.entities import GraphEdge, GraphNode, NodeType
 
 
 class LayoutAlgorithm(str, Enum):

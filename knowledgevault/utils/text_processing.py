@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from knowledgevault.config import CATEGORY_PROFILES, STOP_WORDS
+from continuum.config import CATEGORY_PROFILES, STOP_WORDS
 
 
 def tokenize(text: str) -> list[str]:
@@ -28,14 +28,19 @@ def extract_keywords(text: str, max_keywords: int = 12) -> list[str]:
     return [word for word, _ in counts.most_common(max_keywords)]
 
 
-def score_categories(text: str, min_score: float = 0.15) -> list[str]:
+def score_categories(
+    text: str,
+    profiles: dict[str, list[str]] | None = None,
+    min_score: float = 0.15,
+) -> list[str]:
     """Score text against category keyword profiles."""
+    profiles = profiles or CATEGORY_PROFILES
     tokens = set(tokenize(text))
     if not tokens:
         return ["Personal"]
 
     scores: dict[str, float] = {}
-    for category, keywords in CATEGORY_PROFILES.items():
+    for category, keywords in profiles.items():
         keyword_set = set(keywords)
         overlap = len(tokens & keyword_set)
         if overlap > 0:

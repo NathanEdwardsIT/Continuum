@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""KnowledgeVault — local-first automatic knowledge management."""
+"""Continuum — local-first automatic knowledge management."""
 
 import sys
 
-from knowledgevault.app import run
+from continuum.app import run
 
 
 def main() -> int:
